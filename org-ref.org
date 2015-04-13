@@ -33,9 +33,9 @@ There is also a bibliographystyle link that specifies the style. This link does 
 If you use biblatex, then you use an addbibresource link. biblatex support is not very well tested by me, because we do not use it.
 
 *** Citations
-    :PROPERTIES:
-    :CUSTOM_ID: citations
-    :END:
+:PROPERTIES:
+:CUSTOM_ID: citations
+:END:
 index:cite
 
 org-ref uses the [[bibliography link]] to determine which bibtex files to get citations from, and falls back to the bibtex files defined in the variable  reftex-default-bibliography or org-ref-default-bibliography if no bibliography link is found.
@@ -46,9 +46,7 @@ If the cursor is on a citation key, you should see a message in the minibuffer t
 
 The default citation type is [[id:32B558A3-7B48-4581-982B-082017B0AEE8][customizable]], and set to "cite". If you want another type of citation type, then type C-u before pressing enter in the helm-bibtex selection buffer. You will be prompted for the type of citation you actually want.
 
-Here is a list of supported citation types. You can customize this if you want. If you do not know what all these types are, you probably do not need them. The default cite is what you need. See http://ctan.unixbrain.com/macros/latex/contrib/natbib/natnotes.pdf
- for the cite commands supported in bibtex index:natbib, and http://ctan.mirrorcatalogs.com/macros/latex/contrib/biblatex/doc/biblatex.pdf
- for the commands supported in biblatex. For most scientific journals, only bibtex is supported. index:biblatex
+Here is a list of supported citation types. You can customize this if you want. If you do not know what all these types are, you probably do not need them. The default cite is what you need. See http://ctan.unixbrain.com/macros/latex/contrib/natbib/natnotes.pdf for the cite commands supported in bibtex index:natbib, and http://ctan.mirrorcatalogs.com/macros/latex/contrib/biblatex/doc/biblatex.pdf for the commands supported in biblatex. For most scientific journals, only bibtex is supported. index:biblatex
 
 #+BEGIN_SRC emacs-lisp
 org-ref-cite-types
@@ -89,9 +87,9 @@ label links are "functional" if you put your cursor on the link, you will get a 
 org-ref can help you insert unique labels with the command elisp:org-ref-helm-insert-label-link. This will show you the existing labels, and insert your new label as a link. There is no default key-binding for this.
 
 *** ref links
-    :PROPERTIES:
-    :ID:       290260A1-F07C-4852-B4B3-CEE3E768AA3B
-    :END:
+:PROPERTIES:
+:ID:       290260A1-F07C-4852-B4B3-CEE3E768AA3B
+:END:
 index:ref
 
 A ref link refers to a label of some sort. For example, you can refer to a table name, e.g. Table ref:table-1. You have to provide the context before the ref link, e.g. Table, Figure, Equation, Section, ....
@@ -131,7 +129,7 @@ org-ref also provides these links:
 Note for eqref, you must use a LaTeX label like this:
 
 \begin{equation}
-e^x = 4 \label{eq:1}
+  e^x = 4 \label{eq:1}
 \end{equation}
 
 Then you can refer to Eq. eqref:eq:1 in your documents.
@@ -365,9 +363,9 @@ If you find you need to convert some bibliographies in some format into bibtex, 
 
 * Appendix
 ** Customizing org-ref
-   :PROPERTIES:
-   :ID:       32B558A3-7B48-4581-982B-082017B0AEE8
-   :END:
+:PROPERTIES:
+:ID:       32B558A3-7B48-4581-982B-082017B0AEE8
+:END:
 index:customization
 
 You will probably want to customize a few variables before using org-ref extensively. One way to do this is through the Emacs customization interface: [[elisp:(customize-group "org-ref")]].
@@ -399,10 +397,10 @@ Most org-ref links support org-mode completion. You can type C-c C-l to insert a
 - ref
 
 *** Storing org-links to labels
-    :PROPERTIES:
-    :ID:       AD9663C7-1369-413F-842A-157916D4BB75
-    :CUSTOM_ID: sec-store-links
-    :END:
+:PROPERTIES:
+:ID:       AD9663C7-1369-413F-842A-157916D4BB75
+:CUSTOM_ID: sec-store-links
+:END:
 index:link!storing
 
 If you are on a label link, or on a table name, or on an org-mode label you can "store" a link to it by typing C-c l. Then you can insert the corresponding ref link with C-c C-l. This will insert a ref link or custom_id link as needed. This usually works, but it is not used by me too often, so it is not tested too deeply.
