@@ -584,9 +584,9 @@ Format according to the type in `org-ref-bibliography-entry-format'."
       (bibtex-search-entry key nil 0)
       (setq entry (bibtex-parse-entry))
       (format "** %s - %s
-  :PROPERTIES:
-  %s
-  :END:
+:PROPERTIES:
+%s
+:END:
 " (org-ref-reftex-get-bib-field "author" entry)
 (org-ref-reftex-get-bib-field "title" entry)
 (concat "   :CUSTOM_ID: " (org-ref-reftex-get-bib-field "=key=" entry) "\n"
@@ -2197,18 +2197,18 @@ construct the heading by hand."
     (if (re-search-forward (format ":Custom_ID: %s$" key) nil 'end)
 	(funcall org-ref-open-notes-function)
       ;; no entry found, so add one
-      (insert (format "\n** TODO %s - %s" year title))
+      (insert (format "\n** TODO %s %s - %s" (reftex-format-names (split-string author " and ") 2) year title))
       (insert (format"
- :PROPERTIES:
-  :Custom_ID: %s
-  :AUTHOR: %s
-  :JOURNAL: %s
-  :YEAR: %s
-  :VOLUME: %s
-  :PAGES: %s
-  :DOI: %s
-  :URL: %s
- :END:
+:PROPERTIES:
+:Custom_ID: %s
+:AUTHOR: %s
+:JOURNAL: %s
+:YEAR: %s
+:VOLUME: %s
+:PAGES: %s
+:DOI: %s
+:URL: %s
+:END:
 [[cite:%s]] [[file:%s/%s.pdf][pdf]]\n\n"
 key author journal year volume pages doi url key org-ref-pdf-directory key))
 (save-buffer))))
