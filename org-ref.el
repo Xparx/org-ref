@@ -618,8 +618,8 @@ Format according to the type in `org-ref-bibliography-entry-format'."
 :END:
 " (org-ref-reftex-get-bib-field "author" entry)
 (org-ref-reftex-get-bib-field "title" entry)
-(concat "   :CUSTOM_ID: " (org-ref-reftex-get-bib-field "=key=" entry) "\n"
-	(mapconcat (lambda (element) (format "   :%s: %s"
+(concat ":CUSTOM_ID: " (org-ref-reftex-get-bib-field "=key=" entry) "\n"
+	(mapconcat (lambda (element) (format ":%s: %s"
 					     (upcase (car element))
 					     (cdr element)))
 		   entry
