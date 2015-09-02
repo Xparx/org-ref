@@ -541,8 +541,11 @@ prompt. Otherwise, you have to type or pste in a DOI."
 		       (buffer-substring (region-beginning) (region-end)))
 		      ;; if the first entry in the kill-ring looks
 		      ;; like a DOI, let's use it.
-		      ((if (s-match "^10" (car kill-ring))
-			   (car kill-ring)))
+		      ((and
+			 ;; make sure the kill-ring has something in it
+			 (stringp (car kill-ring))
+			 (s-match "^10" (car kill-ring)))
+			   (car kill-ring))
 		      ;; otherwise, we have no initial input. You
 		      ;; will have to type it in.
 		      (t
@@ -555,16 +558,28 @@ prompt. Otherwise, you have to type or pste in a DOI."
   ;; Wrap in save-window-excursion to restore your window arrangement after this
   ;; is done.
   (save-window-excursion
-    (find-file bibfile)
-    ;; Check if the doi already exists
-    (goto-char (point-min))
-    (if (search-forward doi nil t)
-	(message "%s is already in this file" doi)
-      (end-of-buffer)
-      (insert "\n\n")
-      (doi-utils-insert-bibtex-entry-from-doi doi)
-      (save-buffer))))
+    (with-current-buffer
+      (find-file-noselect bibfile)
+      ;; Check if the doi already exists
+      (goto-char (point-min))
+      (if (search-forward doi nil t)
+	  (message "%s is already in this file" doi)
+	(end-of-buffer)
+	(insert "\n\n")
+	(doi-utils-insert-bibtex-entry-from-doi doi)
+	(save-buffer)))))
 
+
+(defun doi-utils-doi-to-org-bibtex (doi)
+  "Convert a DOI to an org-bibtex form and insert it at point."
+  (interactive "sDOI: ")
+  (with-temp-buffer
+    (insert (doi-utils-doi-to-bibtex-string doi))
+    (bibtex-clean-entry)
+    (kill-region (point-min) (point-max)))
+  (org-bibtex-yank)
+  (org-metaright)
+  (org-metaright))
 
 ;; * Updating bibtex entries
 ;; I wrote this code because it is pretty common for me to copy bibtex entries from ASAP articles that are incomplete, e.g. no page numbers because it is not in print yet. I wanted a convenient way to update an entry from its DOI. Basically, we get the metadata, and update the fields in the entry.
@@ -808,7 +823,17 @@ Argument LINK-STRING Passed in on link click."
 
 (org-add-link-type
  "doi"
- 'doi-link-menu)
+ 'doi-link-menu
+ (lambda (doi desc format)
+   (cond
+    ((eq format 'html)
+     (format "<a href=\"http://dx.doi.org/%s\">%s</a>"
+	     doi
+	     (or desc (concat "doi:" doi))))
+    ((eq format 'latex)
+     (format "\\href{http://dx.doi.org/%s}{%s}"
+	     doi
+	     (or desc (concat "doi:%s" doi)))))))
 
 
 ;; * Getting a doi for a bibtex entry missing one

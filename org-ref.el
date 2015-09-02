@@ -1,6 +1,6 @@
 ;;; org-ref.el --- cite and cross-reference in org-mode
 
-;; Copyright(C) 2014 John Kitchin
+;; Copyright(C) 2014,2015 John Kitchin
 
 ;; Author: John Kitchin <jkitchin@andrew.cmu.edu>
 ;; URL: https://github.com/jkitchin/org-ref
@@ -89,6 +89,12 @@ You should use full-paths for each file."
   :type 'string
   :group 'org-ref)
 
+(defcustom org-ref-note-title-format
+  "** TODO %y - %t"
+  "String to format the title of a note. See the `org-ref-reftex-format-citation' docstring for the escape codes."
+  :type 'string
+  :group 'org-ref)
+
 (defcustom org-ref-open-notes-function
   (lambda ()
     (org-show-entry)
@@ -105,9 +111,21 @@ You should use full-paths for each file."
 
 (defcustom org-ref-open-pdf-function
    'org-ref-open-pdf-at-point
-"User-defined function to open a pdf from a link.  The function must get the key at point, and derive a path to the pdf file, then open it.  The default function is `org-ref-open-pdf-at-point'."
+   "User-defined function to open a pdf from a link.  The
+function must get the key at point, and derive a path to the pdf
+file, then open it.  The default function is
+`org-ref-open-pdf-at-point'."
   :type 'function
   :group 'org-ref)
+
+
+(defcustom org-ref-get-pdf-filename-function
+  'org-ref-get-pdf-filename
+  "User-defined function to get a filename from a bibtex key.
+The function must take a key as an argument, and return the path
+to the corresponding filename. The default is
+`org-ref-get-pdf-filename'. An alternative value is
+`org-ref-get-mendeley-filename'.")
 
 
 (defcustom org-ref-insert-cite-function
@@ -442,10 +460,14 @@ environment, only %l is available."
                           (if reftex-comment-citations
                               reftex-cite-comment-format
                             "")))
-               ((= l ?a) (reftex-format-names
-                          (reftex-get-bib-names "author" entry)
-                          (or n 2)))
-               ((= l ?A) (car (reftex-get-bib-names "author" entry)))
+               ((= l ?a) (replace-regexp-in-string
+                          "\n\\|\t\\|\s+" " "
+                          (reftex-format-names
+                           (reftex-get-bib-names "author" entry)
+                           (or n 2))))
+               ((= l ?A) (replace-regexp-in-string
+                          "\n\\|\t\\|\s+" " "
+                          (car (reftex-get-bib-names "author" entry))))
                ((= l ?b) (org-ref-reftex-get-bib-field "booktitle" entry "in: %s"))
                ((= l ?B) (reftex-abbreviate-title
                           (org-ref-reftex-get-bib-field "booktitle" entry "in: %s")))
@@ -458,8 +480,11 @@ environment, only %l is available."
                ((= l ?E) (car (reftex-get-bib-names "editor" entry)))
                ((= l ?h) (org-ref-reftex-get-bib-field "howpublished" entry))
                ((= l ?i) (org-ref-reftex-get-bib-field "institution" entry))
-               ((= l ?j) (org-ref-reftex-get-bib-field "journal" entry))
-               ((= l ?k) (org-ref-reftex-get-bib-field "key" entry))
+               ((= l ?j) (let ((jt (reftex-get-bib-field "journal" entry)))
+                           (if (string= "" jt)
+                               (reftex-get-bib-field "journaltitle" entry)
+                             jt)))
+               ((= l ?k) (org-ref-reftex-get-bib-field "=key=" entry))
                ((= l ?m) (org-ref-reftex-get-bib-field "month" entry))
                ((= l ?n) (org-ref-reftex-get-bib-field "number" entry))
                ((= l ?o) (org-ref-reftex-get-bib-field "organization" entry))
@@ -473,9 +498,13 @@ environment, only %l is available."
                ((= l ?U) (org-ref-reftex-get-bib-field "url" entry))
                ((= l ?r) (org-ref-reftex-get-bib-field "address" entry))
 	       ;; strip enclosing brackets from title if they are there
-               ((= l ?t) (org-ref-reftex-get-bib-field "title" entry))
-               ((= l ?T) (reftex-abbreviate-title
+               ((= l ?t) (replace-regexp-in-string
+                          "\n\\|\t\\|\s+" " "
                           (org-ref-reftex-get-bib-field "title" entry)))
+               ((= l ?T) (reftex-abbreviate-title
+                          ((replace-regexp-in-string
+                            "\n\\|\t\\|\s+" " "
+                            (org-ref-reftex-get-bib-field "title" entry)))))
                ((= l ?v) (org-ref-reftex-get-bib-field "volume" entry))
                ((= l ?y) (org-ref-reftex-get-bib-field "year" entry)))))
 
@@ -487,8 +516,6 @@ environment, only %l is available."
     (setq format (replace-match "%" t t format)))
   (while (string-match "[ ,.;:]*%<" format)
     (setq format (replace-match "" t t format)))
-  ;; also replace carriage returns, tabs, and multiple whitespaces
-  (setq format (replace-regexp-in-string "\n\\|\t\\|\s+" " " format))
   format)
 
 (defun org-ref-get-bibtex-entry-citation (key)
@@ -507,6 +534,7 @@ Format according to the type in `org-ref-bibliography-entry-format'."
 
     (with-temp-buffer
       (insert-file-contents file)
+      (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
       (bibtex-search-entry key nil 0)
       (setq bibtex-entry (bibtex-parse-entry))
       ;; downcase field names so they work in the format-citation code
@@ -581,6 +609,7 @@ Format according to the type in `org-ref-bibliography-entry-format'."
 
     (with-temp-buffer
       (insert-file-contents file)
+      (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
       (bibtex-search-entry key nil 0)
       (setq entry (bibtex-parse-entry))
       (format "** %s - %s
@@ -972,7 +1001,7 @@ ARG does nothing."
 		    (org-ref-count-labels label))))
  (lambda (keyword desc format)
    (cond
-    ((eq format 'html) (format "(<label>%s</label>)" keyword))
+    ((eq format 'html) (format "<div id=\"%s\">" keyword))
     ((eq format 'latex)
      (format "\\label{%s}" keyword)))))
 
@@ -1051,7 +1080,7 @@ ARG does nothing."
  ;formatting
  (lambda (keyword desc format)
    (cond
-    ((eq format 'html) (format "(<ref>%s</ref>)" keyword))
+    ((eq format 'html) (format "<a href=\"#%s\">%s</a>" keyword keyword))
     ((eq format 'latex)
      (format "\\ref{%s}" keyword)))))
 
@@ -1394,9 +1423,10 @@ Optional argument ARG Does nothing."
  ;formatting
  (lambda (keyword desc format)
    (cond
-    ((eq format 'html) (format "(<eqref>%s</eqref>)" path))
-    ((eq format 'latex)
-     (format "\\eqref{%s}" keyword)))))
+    ((eq format 'latex) (format "\\eqref{%s}" keyword))
+    ;;considering the fact that latex's the standard of math formulas, just use mathjax to render the html
+    ;;customize the variable 'org-html-mathjax-template' and 'org-html-mathjax-options' refering to  'autonumber'
+    ((eq format 'html) (format "\\eqref{%s}" keyword)))))
 
 ;; ** cite link
 
@@ -1519,12 +1549,37 @@ falling back to what the user has set in `org-ref-default-bibliography'"
 
 ;; *** key at point functions
 
+(defun org-ref-get-pdf-filename (key)
+  "Return the pdf filename associated with a bibtex KEY."
+  (format (concat org-ref-pdf-directory "%s.pdf") key))
+
+
+(defun org-ref-get-mendeley-filename (key)
+  "Return the pdf filename indicated by mendeley file field.
+Falls back to org-ref-get-pdf-filename if file filed does not exist.
+Contributed by https://github.com/autosquid."
+  (let* ((results (org-ref-get-bibtex-key-and-file key))
+	 (bibfile (cdr results)))
+    (with-temp-buffer
+      (insert-file-contents bibfile)
+      (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
+      (bibtex-search-entry key nil 0)
+      (setq entry (bibtex-parse-entry))
+      (let ((e (org-ref-reftex-get-bib-field "file" entry)))
+	(if (> (length e) 4)
+	    (remove-if
+	     (lambda (ch)
+	       (find ch "{}\\"))
+	     (format "/%s" (subseq e 1 (- (length e) 4))))
+	  (format (concat org-ref-pdf-directory "%s.pdf") key))))))
+
+
 (defun org-ref-open-pdf-at-point ()
   "Open the pdf for bibtex key under point if it exists."
   (interactive)
   (let* ((results (org-ref-get-bibtex-key-and-file))
 	 (key (car results))
-         (pdf-file (format (concat org-ref-pdf-directory "%s.pdf") key)))
+         (pdf-file (funcall org-ref-get-pdf-filename-function key)))
     (if (file-exists-p pdf-file)
 	(org-open-file pdf-file)
 (message "no pdf found for %s" key))))
@@ -1539,6 +1594,7 @@ falling back to what the user has set in `org-ref-default-bibliography'"
     (save-excursion
       (with-temp-buffer
         (insert-file-contents bibfile)
+        (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
         (bibtex-search-entry key)
         ;; I like this better than bibtex-url which does not always find
         ;; the urls
@@ -1565,6 +1621,7 @@ falling back to what the user has set in `org-ref-default-bibliography'"
     (save-excursion
       (with-temp-buffer
         (insert-file-contents bibfile)
+        (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
         (bibtex-search-entry key)
         (org-ref-open-bibtex-notes)))))
 
@@ -1579,6 +1636,7 @@ falling back to what the user has set in `org-ref-default-bibliography'"
     (message "%s" (progn
 		    (with-temp-buffer
                       (insert-file-contents bibfile)
+                      (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
                       (bibtex-search-entry key)
                       (org-ref-bib-citation))))))
 
@@ -1651,6 +1709,7 @@ Prompt for NEW-FILE includes bib files in `org-ref-default-bibliography', and bi
     (save-excursion
       (with-temp-buffer
         (insert-file-contents bibfile)
+        (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
         (bibtex-search-entry key)
 	(setq doi (bibtex-autokey-get-field "doi"))
 	;; in case doi is a url, remove the url part.
@@ -1703,16 +1762,18 @@ get a lot of options.  LINK-STRING is used by the link function."
   (interactive)
   (let* ((results (org-ref-get-bibtex-key-and-file))
 	 (key (car results))
-         (pdf-file (format (concat org-ref-pdf-directory "%s.pdf") key))
+         (pdf-file (funcall org-ref-get-pdf-filename-function key))
          (bibfile (cdr results))
 	 (url (save-excursion
 		(with-temp-buffer
 		  (insert-file-contents bibfile)
+                  (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 		  (bibtex-search-entry key)
 		  (bibtex-autokey-get-field "url"))))
 	 (doi (save-excursion
 		(with-temp-buffer
 		  (insert-file-contents bibfile)
+                  (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 		  (bibtex-search-entry key)
 		  ;; I like this better than bibtex-url which does not always find
 		  ;; the urls
@@ -1789,6 +1850,7 @@ get a lot of options.  LINK-STRING is used by the link function."
 	(save-excursion
 	  (with-temp-buffer
 	    (insert-file-contents bibfile)
+            (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 	    (bibtex-search-entry key)
 	    (org-ref-bib-citation))))
       "\n"
@@ -1823,6 +1885,10 @@ get a lot of options.  LINK-STRING is used by the link function."
 (defmacro org-ref-make-format-function (type)
   "Macro to make a format function for a link of TYPE."
   `(defun ,(intern (format "org-ref-format-%s" type)) (keyword desc format)
+     ,(format "Formatting function for %s links.
+[[%s:KEYWORD][DESC]]
+FORMAT is a symbol for the export backend.
+Supported backends: 'html, 'latex, 'ascii, 'org, 'md" type type)
      (cond
       ((eq format 'org)
        (mapconcat
@@ -1849,13 +1915,13 @@ get a lot of options.  LINK-STRING is used by the link function."
 	   (concat "\\" ,type (mapconcat (lambda (key) (format "{%s}"  key))
 					 (org-ref-split-and-strip-string keyword) ""))
 	 ;; bibtex format
-       (concat "\\" ,type (when desc (org-ref-format-citation-description desc)) "{"
-	       (mapconcat (lambda (key) key) (org-ref-split-and-strip-string keyword) ",")
-	       "}")))
+	 (concat "\\" ,type (when desc (org-ref-format-citation-description desc)) "{"
+		 (mapconcat (lambda (key) key) (org-ref-split-and-strip-string keyword) ",")
+		 "}")))
       ;; for markdown we generate pandoc citations
       ((eq format 'md)
        (cond
-	(desc  ;; pre and or post text
+	(desc ;; pre and or post text
 	 (let* ((text (split-string desc "::"))
 		(pre (car text))
 		(post (cadr text)))
@@ -1892,7 +1958,7 @@ citez link, with reftex key of z, and the completion function."
   ;; create the formatting function
   (eval `(org-ref-make-format-function ,type))
 
-  (eval-expression
+  (eval
    `(org-add-link-type
      ,type
      org-ref-cite-onclick-function
@@ -1912,7 +1978,8 @@ citez link, with reftex key of z, and the completion function."
 		  `((,key  . ,(concat type ":%l")))))))
 
 ;; create all the link types and their completion functions
-(mapcar 'org-ref-define-citation-link org-ref-cite-types)
+(dolist (type org-ref-cite-types)
+  (org-ref-define-citation-link type))
 
 (defun org-ref-insert-cite-link (alternative-cite)
   "Insert a default citation link using reftex.
@@ -2093,7 +2160,7 @@ arg (ALTERNATIVE-CITE) to get a menu of citation types."
 (defun org-ref-bib-citation ()
   "From a bibtex entry, create and return a simple citation string.
 This assumes you are in an article."
-
+  (bibtex-set-dialect nil t)
   (bibtex-beginning-of-entry)
   (let* ((cb (current-buffer))
 	 (bibtex-expand-strings t)
@@ -2103,7 +2170,10 @@ This assumes you are in an article."
 	 (year  (reftex-get-bib-field "year" entry))
 	 (author (replace-regexp-in-string "\n\\|\t\\|\s+" " " (reftex-get-bib-field "author" entry)))
 	 (key (reftex-get-bib-field "=key=" entry))
-	 (journal (reftex-get-bib-field "journal" entry))
+	 (journal (let ((jt (reftex-get-bib-field "journal" entry)))
+                    (if (string= "" jt)
+                        (reftex-get-bib-field "journaltitle" entry)
+                      jt)))
 	 (volume (reftex-get-bib-field "volume" entry))
 	 (pages (reftex-get-bib-field "pages" entry))
 	 (doi (reftex-get-bib-field "doi" entry))
@@ -2171,16 +2241,7 @@ construct the heading by hand."
 	 (bibtex-expand-strings t)
 	 (entry (cl-loop for (key . value) in (bibtex-parse-entry t)
 			 collect (cons (downcase key) value)))
-	 (title (replace-regexp-in-string "\n\\|\t\\|\s+" " " (reftex-get-bib-field "title" entry)))
-	 (year  (reftex-get-bib-field "year" entry))
-	 (author (replace-regexp-in-string "\n\\|\t\\|\s+" " " (reftex-get-bib-field "author" entry)))
-	 (key (reftex-get-bib-field "=key=" entry))
-	 (journal (reftex-get-bib-field "journal" entry))
-	 (volume (reftex-get-bib-field "volume" entry))
-	 (pages (reftex-get-bib-field "pages" entry))
-	 (doi (reftex-get-bib-field "doi" entry))
-	 (url (reftex-get-bib-field "url" entry))
-	 )
+	 (key (reftex-get-bib-field "=key=" entry)))
 
     ;; save key to clipboard to make saving pdf later easier by pasting.
     (with-temp-buffer
@@ -2197,38 +2258,41 @@ construct the heading by hand."
     (if (re-search-forward (format ":Custom_ID: %s$" key) nil 'end)
 	(funcall org-ref-open-notes-function)
       ;; no entry found, so add one
-      (insert (format "\n** TODO %s %s - %s" (reftex-format-names (split-string author " and ") 2) year title))
-      (insert (format"
+      (insert (org-ref-reftex-format-citation entry (concat "\n" org-ref-note-title-format)))
+      (insert (org-ref-reftex-format-citation
+               entry
+               (concat "
 :PROPERTIES:
-:Custom_ID: %s
-:AUTHOR: %s
-:JOURNAL: %s
-:YEAR: %s
-:VOLUME: %s
-:PAGES: %s
-:DOI: %s
-:URL: %s
+:Custom_ID: %k
+:AUTHOR: %9a
+:JOURNAL: %j
+:YEAR: %y
+:VOLUME: %v
+:PAGES: %p
+:DOI: %D
+:URL: %U
 :END:
-[[cite:%s]] [[file:%s/%s.pdf][pdf]]\n\n"
-key author journal year volume pages doi url key org-ref-pdf-directory key))
-(save-buffer))))
+"
+                       (format "[[cite:%s]] [[file:%s/%s.pdf][pdf]]\n\n"
+                               key org-ref-pdf-directory key))))
+      (save-buffer))))
 
 (defun org-ref-open-notes-from-reftex ()
   "Call reftex, and open notes for selected entry."
   (interactive)
   (let ((bibtex-key )))
 
-    ;; now look for entry in the notes file
-    (if  org-ref-bibliography-notes
-	(find-file-other-window org-ref-bibliography-notes)
-      (error "Org-ref-bib-bibliography-notes is not set to anything"))
+  ;; now look for entry in the notes file
+  (if  org-ref-bibliography-notes
+      (find-file-other-window org-ref-bibliography-notes)
+    (error "Org-ref-bib-bibliography-notes is not set to anything"))
 
-    (goto-char (point-min))
+  (goto-char (point-min))
 
-    (re-search-forward (format
-			":Custom_ID: %s$"
-			(cl-first (reftex-citation t)) nil 'end))
-    (funcall org-ref-open-notes-function))
+  (re-search-forward (format
+                      ":Custom_ID: %s$"
+                      (cl-first (reftex-citation t)) nil 'end))
+  (funcall org-ref-open-notes-function))
 
 ;; ** Open bibtex entry in browser
 (defun org-ref-open-in-browser ()
@@ -2361,7 +2425,7 @@ If no bibliography is in the buffer the variable
 ;; ** Find bad citations
 (require 'cl)
 
-(defun index (substring list)
+(defun org-ref-index (substring list)
   "Return the index of SUBSTRING in a LIST of strings."
   (let ((i 0)
 	(found nil))
@@ -2391,7 +2455,7 @@ Makes a new buffer with clickable links."
 	(let ((plist (nth 1 link)))
 	  (when (-contains? org-ref-cite-types (plist-get plist :type))
 	    (dolist (key (org-ref-split-and-strip-string (plist-get plist :path)))
-	      (when (not (index key bibtex-keys))
+	      (when (not (org-ref-index key bibtex-keys))
 		(setq
 		 bad-citations
 		 (append
@@ -2437,7 +2501,7 @@ Makes a new buffer with clickable links."
 	(let ((plist (nth 1 link)))
 	  (when (-contains? org-ref-cite-types (plist-get plist :type))
 	    (dolist (key (org-ref-split-and-strip-string (plist-get plist :path)) )
-	      (when (not (index key bibtex-keys))
+	      (when (not (org-ref-index key bibtex-keys))
 		(goto-char (plist-get plist :begin))
 		(re-search-forward key)
 		(push (cons key (point-marker)) bad-citations)))
@@ -2642,7 +2706,7 @@ Shows bad citations, ref links and labels"
   "clean and replace the key in a bibtex function. When keep-key is t, do not replace it. You can use a prefix to specify the key should be kept"
   (interactive "P")
   (bibtex-beginning-of-entry)
-(end-of-line)
+  (end-of-line)
   ;; some entries do not have a key or comma in first line. We check and add it, if needed.
   (unless (string-match ",$" (thing-at-point 'line))
     (end-of-line)
@@ -2740,6 +2804,7 @@ Shows bad citations, ref links and labels"
 	 (bibfile (cdr results)))
     (with-temp-buffer
       (insert-file-contents bibfile)
+      (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
       (bibtex-search-entry key nil 0)
       (prog1 (reftex-get-bib-field "year" (bibtex-parse-entry t))
         ))))
@@ -2786,7 +2851,7 @@ Shows bad citations, ref links and labels"
    (when (-contains? org-ref-cite-types type)
         (setq key (org-ref-get-bibtex-key-under-cursor))
 	(setq keys (org-ref-split-and-strip-string link-string))
-        (setq i (index key keys))  ;; defined in org-ref
+        (setq i (org-ref-index key keys))  ;; defined in org-ref
 	(if (> direction 0) ;; shift right
 	    (org-ref-swap-keys i (+ i 1) keys)
 	  (org-ref-swap-keys i (- i 1) keys))
@@ -3060,26 +3125,26 @@ Run this with the point in a bibtex entry."
 				       )))))
     (helm :sources '(keyword-source fallback-source))))
 
-(defun helm-bibtex-show-entry (key)
-  "Show the entry for KEY in the BibTeX file.
-The original function in `helm-bibtex' has a bug where it finds the
-first key that partially matches.  This version avoids that."
-  (catch 'break
-    (dolist (bibtex-file (if (listp helm-bibtex-bibliography)
-                             helm-bibtex-bibliography
-                           (list helm-bibtex-bibliography)))
-      (let ((buf (helm-bibtex-buffer-visiting bibtex-file))
-            (entries '()))
-        (find-file bibtex-file)
-        (bibtex-map-entries
-	 (lambda (key start end)
-	   (add-to-list 'entries (cons key start))))
-        (if (assoc key entries)
-	    (progn
-	      (goto-char (cdr (assoc key entries)))
-	      (throw 'break t))
-          (unless buf
-            (kill-buffer)))))))
+;; (defun helm-bibtex-show-entry (key)
+;;   "Show the entry for KEY in the BibTeX file.
+;; The original function in `helm-bibtex' has a bug where it finds the
+;; first key that partially matches.  This version avoids that."
+;;   (catch 'break
+;;     (dolist (bibtex-file (if (listp helm-bibtex-bibliography)
+;;                              helm-bibtex-bibliography
+;;                            (list helm-bibtex-bibliography)))
+;;       (let ((buf (helm-bibtex-buffer-visiting bibtex-file))
+;;             (entries '()))
+;;         (find-file bibtex-file)
+;;         (bibtex-map-entries
+;;	 (lambda (key start end)
+;;	   (add-to-list 'entries (cons key start))))
+;;         (if (assoc key entries)
+;;	    (progn
+;;	      (goto-char (cdr (assoc key entries)))
+;;	      (throw 'break t))
+;;           (unless buf
+;;             (kill-buffer)))))))
 
 (defun org-ref-helm-tag-entries (candidates)
   "Set tags on selected bibtex entries from `helm-bibtex'.
@@ -3098,28 +3163,56 @@ Argument CANDIDATES helm candidates."
 		 ", " (bibtex-autokey-get-field "keywords")))
 	       (save-buffer)))))
 
-(setq helm-source-bibtex
-      '((name                                      . "BibTeX entries")
-	(init                                      . helm-bibtex-init)
-	(candidates                                . helm-bibtex-candidates)
-	(filtered-candidate-transformer            . helm-bibtex-candidates-formatter)
-	(action . (("Insert citation"              . helm-bibtex-insert-citation)
-		   ("Show entry"                   . helm-bibtex-show-entry)
-		   ("Open PDF file (if present)"   . helm-bibtex-open-pdf)
-		   ("Open URL or DOI in browser"   . helm-bibtex-open-url-or-doi)
-		   ("Insert formatted reference"   . helm-bibtex-insert-reference)
-		   ("Insert BibTeX key"            . helm-bibtex-insert-key)
-		   ("Insert BibTeX entry"          . helm-bibtex-insert-bibtex)
-		   ("Attach PDF to email"          . helm-bibtex-add-PDF-attachment)
-		   ("Edit notes"                   . helm-bibtex-edit-notes)
-                   ("Add keywords to entries"      . org-ref-helm-tag-entries)
-		   ))))
+;; (setq helm-source-bibtex
+;;       '((name                                      . "BibTeX entries")
+;;	(init                                      . helm-bibtex-init)
+;;	(candidates                                . helm-bibtex-candidates)
+;;	(filtered-candidate-transformer            . helm-bibtex-candidates-formatter)
+;;	(action . (("Insert citation"              . helm-bibtex-insert-citation)
+;;		   ("Show entry"                   . helm-bibtex-show-entry)
+;;		   ("Open PDF file (if present)"   . helm-bibtex-open-pdf)
+;;		   ("Open URL or DOI in browser"   . helm-bibtex-open-url-or-doi)
+;;		   ("Insert formatted reference"   . helm-bibtex-insert-reference)
+;;		   ("Insert BibTeX key"            . helm-bibtex-insert-key)
+;;		   ("Insert BibTeX entry"          . helm-bibtex-insert-bibtex)
+;;		   ("Attach PDF to email"          . helm-bibtex-add-PDF-attachment)
+;;		   ("Edit notes"                   . helm-bibtex-edit-notes)
+;;                    ("Add keywords to entries"      . org-ref-helm-tag-entries)
+;;		   ))))
+
+;; Make insert citation the default entry
+(helm-delete-action-from-source "Insert citation" helm-source-bibtex)
+
+;; There seems to be a bug in the helm source that prevents you from inserting
+;; at position zero
+
+;; (helm-add-action-to-source
+;;  "Insert citation"
+;;  'helm-bibtex-insert-citation
+;;  helm-source-bibtex
+;;  0)
+
+;; this is basically what the function above is supposed to do.
+(helm-attrset 'action
+	      (-insert-at 0 '("Insert citation" .  helm-bibtex-insert-citation)
+			  (helm-attr 'action helm-source-bibtex))
+	      helm-source-bibtex)
+
+;; Add a new action
+(helm-add-action-to-source
+ "Add keywords to entries"
+ 'org-ref-helm-tag-entries
+ helm-source-bibtex)
 
 (defun helm-bibtex-format-org-ref (keys)
   "Insert selected KEYS as cite link. Append KEYS if you are on a link.
-Technically, this function should return a string that is inserted by helm. This function does the insertion and gives helm an empty string to insert. This lets us handle appending to a link properly.
+Technically, this function should return a string that is
+inserted by helm. This function does the insertion and gives helm
+an empty string to insert. This lets us handle appending to a
+link properly.
 
-In the helm-bibtex buffer, C-u will give you a helm menu to select a new link type for the selected entries.
+In the helm-bibtex buffer, C-u will give you a helm menu to
+select a new link type for the selected entries.
 
 C-u C-u will change the key at point to the selected keys."
   (let* ((object (org-element-context))
@@ -3227,6 +3320,7 @@ With two prefix args, insert a label link."
 	(save-excursion
 	  (with-temp-buffer
 	    (insert-file-contents bibfile)
+            (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 	    (bibtex-search-entry key)
 	    (org-ref-bib-citation)))
       "!!! No entry found !!!" )))
@@ -3237,16 +3331,18 @@ With two prefix args, insert a label link."
 Checks for pdf and doi, and add appropriate functions."
   (let* ((results (org-ref-get-bibtex-key-and-file))
 	 (key (car results))
-         (pdf-file (format (concat org-ref-pdf-directory "%s.pdf") key))
+         (pdf-file (funcall org-ref-get-pdf-filename-function key))
          (bibfile (cdr results))
 	 (url (save-excursion
 		(with-temp-buffer
 		  (insert-file-contents bibfile)
+                  (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 		  (bibtex-search-entry key)
 		  (bibtex-autokey-get-field "url"))))
 	 (doi (save-excursion
 		(with-temp-buffer
 		  (insert-file-contents bibfile)
+                  (bibtex-set-dialect (parsebib-find-bibtex-dialect) t)
 		  (bibtex-search-entry key)
 		  ;; I like this better than bibtex-url which does not always find
 		  ;; the urls
@@ -3305,8 +3401,8 @@ Checks for pdf and doi, and add appropriate functions."
     (add-to-list
      'candidates
      '("Copy key to clipboard" . (lambda ()
-				  (kill-new
-				   (car (org-ref-get-bibtex-key-and-file)))))
+				   (kill-new
+				    (car (org-ref-get-bibtex-key-and-file)))))
      t)
 
     (add-to-list
@@ -3317,15 +3413,71 @@ Checks for pdf and doi, and add appropriate functions."
     (add-to-list
      'candidates
      '("Email bibtex entry and pdf" . (lambda ()
-		  (save-excursion
-		    (org-ref-open-citation-at-point)
-		    (email-bibtex-entry))))
+					(save-excursion
+					  (org-ref-open-citation-at-point)
+					  (email-bibtex-entry))))
      t)
-  ;; finally return a numbered list of the candidates
-  (cl-loop for i from 0
-	   for cell in candidates
-	   collect (cons (format "%2s. %s" i (car cell))
-			 (cdr cell)))))
+
+    ;; add Scopus functions. These work by looking up a DOI to get a Scopus
+    ;; EID. This may only work for Scopus articles. Not all DOIs are recognized
+    ;; in the Scopus API. We only load these if you have defined a
+    ;; `*scopus-api-key*', which is required to do the API queries. See
+    ;; `scopus'. These functions are appended to the candidate list.
+    (when (and (boundp '*scopus-api-key*) *scopus-api-key*)
+      (add-to-list
+       'candidates
+       '("Open in Scopus" . (lambda ()
+			      (let ((eid (scopus-doi-to-eid (org-ref-get-doi-at-point))))
+				(if eid
+				    (scopus-open-eid eid)
+				  (message "No EID found.")))))
+       t)
+
+      (add-to-list
+       'candidates
+       '("Scopus citing articles" . (lambda ()
+				      (let ((url (scopus-citing-url
+						  (org-ref-get-doi-at-point))))
+					(if url
+					    (browse-url url)
+					  (message "No url found.")))))
+       t)
+
+      (add-to-list
+       'candidates
+       '("Scopus related by authors" . (lambda ()
+					 (let ((url (scopus-related-by-author-url
+						     (org-ref-get-doi-at-point))))
+					   (if url
+					       (browse-url url)
+					     (message "No url found.")))))
+       t)
+
+      (add-to-list
+       'candidates
+       '("Scopus related by references" . (lambda ()
+					    (let ((url (scopus-related-by-references-url
+							(org-ref-get-doi-at-point))))
+					      (if url
+						  (browse-url url)
+						(message "No url found.")))))
+       t)
+
+      (add-to-list
+       'candidates
+       '("Scopus related by keywords" . (lambda ()
+					  (let ((url (scopus-related-by-keyword-url
+						      (org-ref-get-doi-at-point))))
+					    (if url
+						(browse-url url)
+					      (message "No url found.")))))
+       t))
+
+    ;; finally return a numbered list of the candidates
+    (cl-loop for i from 0
+	     for cell in candidates
+	     collect (cons (format "%2s. %s" i (car cell))
+			   (cdr cell)))))
 
 
 (defvar org-ref-helm-user-candidates '()
@@ -3335,7 +3487,12 @@ This is a list of cons cells '((\"description\" . action)). The action function 
 ;; example of adding your own function
 (add-to-list
  'org-ref-helm-user-candidates
- '("Example" . (lambda () (message-box "You did it!")))
+ '("Open pdf in emacs" . (lambda ()
+			   (find-file
+			    (concat
+			     org-ref-pdf-directory
+			     (car (org-ref-get-bibtex-key-and-file))
+			     ".pdf"))))
  t)
 
 ;;;###autoload
@@ -3364,8 +3521,7 @@ KEY is returned for the selected item(s) in helm."
 		      (candidates . ,org-ref-helm-user-candidates)
 		      (action . (lambda (f)
 				  (switch-to-buffer cb)
-				  (funcall f))))
-		     ))))
+				  (funcall f))))))))
 
 ;; * Hydra menus in org-ref
 
@@ -3393,12 +3549,14 @@ _o_: Open entry   _e_: Email entry and pdf
     ("K" org-ref-copy-entry-as-summary nil)
     ("k" (progn
 	   (kill-new
-	    (car (org-ref-get-bibtex-key-and-file)))) nil)
+	    (car (org-ref-get-bibtex-key-and-file))))
+     nil)
     ("f" org-ref-copy-entry-at-point-to-file nil)
 
     ("e" (save-excursion
 	   (org-ref-open-citation-at-point)
-	   (email-bibtex-entry)) nil)))
+	   (email-bibtex-entry))
+     nil)))
 
 ;; * org-ref-help
 (defun org-ref-help ()
